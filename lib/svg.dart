@@ -709,6 +709,7 @@ class _SvgPictureState extends State<SvgPicture> {
   void _handleImageChanged(PictureInfo? imageInfo, bool synchronousCall) {
     setState(() {
       _picture = imageInfo;
+      print('changed picture info');
     });
   }
 

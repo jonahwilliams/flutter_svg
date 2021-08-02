@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'picture_stream.dart';
@@ -144,6 +145,9 @@ class RenderPicture extends RenderBox {
   }
 
   @override
+  bool get needsCompositing => true;
+
+  @override
   bool hitTestSelf(Offset position) => true;
 
   @override
@@ -161,40 +165,83 @@ class RenderPicture extends RenderBox {
     if (picture == null || size == Size.zero) {
       return;
     }
-    context.canvas.save();
-    context.canvas.translate(offset.dx, offset.dy);
-    if (_flipHorizontally) {
-      context.canvas.translate(size.width, 0.0);
-      context.canvas.scale(-1.0, 1.0);
-    }
-
-    // this is sometimes useful for debugging, e.g. to draw
-    // a thin red border around the drawing.
-    assert(() {
-      if (RenderPicture.debugRectColor != null &&
-          RenderPicture.debugRectColor!.alpha > 0) {
-        context.canvas.drawRect(
-            Offset.zero & size,
-            Paint()
-              ..color = debugRectColor!
-              ..style = PaintingStyle.stroke);
-      }
-      return true;
-    }());
-    scaleCanvasToViewBox(
-      context.canvas,
-      size,
+    context.pushLayer(OffsetLayer(offset: offset), (context, offset) {
+      var transform = scaleMatrixToViewBox(
+        size,
       _picture!.viewport,
       _picture!.size,
-    );
-    final Rect viewportRect = Offset.zero & _picture!.viewport.size;
-    if (allowDrawingOutsideViewBox != true) {
-      context.canvas.clipRect(viewportRect);
-    }
-    context.canvas.drawPicture(picture!.picture);
-    context.canvas.restore();
+      );
+      if (transform == null) {
+        context.addLayer(PictureLayerNoDispose(Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height))
+          ..isComplexHint = true
+          ..picture = picture!.picture
+        );
+      } else {
+        context.pushTransform(needsCompositing, offset, transform, (context, offset) {
+          context.addLayer(PictureLayerNoDispose(Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height))
+            ..isComplexHint = true
+            ..picture = picture!.picture
+          );
+        });
+      }
+
+    }, offset);
+
+
+    // scaleCanvasToViewBox(
+    //   context.canvas,
+    //   size,
+    //   _picture!.viewport,
+    //   _picture!.size,
+    // );
+    // final Rect viewportRect = Offset.zero & _picture!.viewport.size;
+    // if (allowDrawingOutsideViewBox != true) {
+    //   context.canvas.clipRect(viewportRect);
+    // }
+    // context.addLayer(PictureLayer(Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height))
+    //   ..isComplexHint = true
+    //   ..picture = picture!.picture
+    // );
+    // context.canvas.restore();
   }
 }
+
+class PictureLayerNoDispose extends PictureLayer {
+  PictureLayerNoDispose(Rect canvasBounds) : super(canvasBounds);
+
+  @override
+  void dispose() {
+
+  }
+}
+
+/// Scales a [Canvas] to a given [viewBox] based on the [desiredSize]
+/// of the widget.
+Matrix4? scaleMatrixToViewBox(
+  Size desiredSize,
+  Rect viewBox,
+  Size pictureSize,
+) {
+  if (desiredSize != viewBox.size) {
+    final Matrix4 matrix = Matrix4.identity();
+    final double scale = math.min(
+      desiredSize.width / viewBox.width,
+      desiredSize.height / viewBox.height,
+    );
+    final Size scaledHalfViewBoxSize = viewBox.size * scale / 2.0;
+    final Size halfDesiredSize = desiredSize / 2.0;
+    final Offset shift = Offset(
+      halfDesiredSize.width - scaledHalfViewBoxSize.width,
+      halfDesiredSize.height - scaledHalfViewBoxSize.height,
+    );
+    matrix
+      ..translate(shift.dx, shift.dy)
+      ..scale(scale, scale);
+    return matrix;
+  }
+  return null;
+}
+
 
 /// Scales a [Canvas] to a given [viewBox] based on the [desiredSize]
 /// of the widget.
